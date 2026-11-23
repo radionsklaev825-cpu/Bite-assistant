@@ -20,7 +20,7 @@ LABEL_MIN = 0.65                              # порог совпадения 
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(BASE, "model")
-VOICE_DIR = os.path.join(BASE, "voice")
+VOICE_DIR = os.path.join(BASE, "voise")
 
 PythonService = autoclass("org.kivy.android.PythonService")
 service = PythonService.mService
