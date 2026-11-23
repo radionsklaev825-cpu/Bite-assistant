@@ -7,7 +7,7 @@ source.include_exts = py,png,mp3
 source.include_patterns = model/*
 source.exclude_dirs = bin,.buildozer,.github,.git,venv,__pycache__
 version = 0.1
-requirements = python3,kivy==2.3.0,pyjnius,android
+requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.0,pyjnius,android
 orientation = portrait
 fullscreen = 0
 
@@ -22,7 +22,7 @@ android.permissions = RECORD_AUDIO,FOREGROUND_SERVICE,FOREGROUND_SERVICE_MICROPH
 
 android.api = 34
 android.minapi = 24
-android.ndk = 25b
+android.ndk = 28c
 android.archs = arm64-v8a
 android.accept_sdk_license = True
 
