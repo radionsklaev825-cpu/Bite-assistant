@@ -40,11 +40,21 @@ def is_wake(text):
 
 
 def parse_command(text):
-    """'запусти инстаграм' -> 'инстаграм'; не команда -> None."""
+    """'запусти инстаграм' -> 'инстаграм'. Глагол ищем в любом месте фразы;
+    если глагола нет, но фраза короткая (1-3 слова), считаем её названием приложения."""
     words = clean(text).split()
-    if len(words) < 2 or words[0] not in VERBS:
+    if not words:
         return None
-    rest = [w for w in words[1:] if w not in FILLER]
+    start = None
+    for k, w in enumerate(words):
+        if w in VERBS:
+            start = k + 1
+            break
+    if start is None:
+        if len(words) > 3:
+            return None
+        start = 0
+    rest = [w for w in words[start:] if w not in FILLER and w not in VERBS]
     return " ".join(rest) or None
 
 
