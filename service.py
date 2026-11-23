@@ -3,6 +3,7 @@
 import json
 import os
 import queue
+import re
 import shutil
 import time
 import traceback
@@ -10,7 +11,8 @@ import zipfile
 
 from jnius import PythonJavaClass, autoclass, java_method
 
-from logic import (is_wake, match_alias, match_label, parse_command)
+from apps import ALIASES
+from logic import (clean, is_wake, match_alias, match_label, parse_command)
 
 # ---- настройки -------------------------------------------------------------
 WAKE_GRAMMAR = '["запуск байт", "[unk]"]'   # слова-активатор для Vosk
@@ -35,6 +37,7 @@ Recognizer = autoclass("org.vosk.Recognizer")
 SpeechService = autoclass("org.vosk.android.SpeechService")
 
 events = queue.Queue()
+LAST = ""   # что Байт услышал в последний раз (показываем на экране)
 
 
 # ---- журнал и статус (файлы видны в памяти телефона) -------------------------
@@ -201,46 +204,88 @@ def start_package(pkg):
     return True
 
 
+# ---- грамматика команд: Байт ждёт только «глагол + известное приложение» ---------
+CMD_VERBS = ("запусти", "открой", "включи")
+
+
+def command_grammar():
+    names = set(ALIASES.keys())
+    try:
+        for label, _pkg in installed_apps(service.getPackageManager()):
+            l = clean(label)
+            if len(l) >= 3 and re.fullmatch(r"[а-я ]+", l):
+                names.add(l)
+    except Exception:
+        log("command_grammar: " + traceback.format_exc())
+    phrases = []
+    for n in sorted(names):
+        phrases.append(n)
+        for v in CMD_VERBS:
+            phrases.append(v + " " + n)
+    phrases.append("[unk]")
+    return json.dumps(phrases, ensure_ascii=False)
+
+
+def _txt(data):
+    return data.replace("[unk]", " ").strip()
+
+
 # ---- один диалог: после «Запуск, Байт» -------------------------------------------------
-def handle_command(ear):
-    ear.start(None)   # свободное распознавание речи
+def handle_command(ear, grammar):
+    global LAST
+    ear.start(grammar)   # только известные команды: так намного точнее
     deadline = time.time() + COMMAND_TIMEOUT
-    heard, spoke = "", False
+    heard, partial, spoke = "", "", False
     while time.time() < deadline:
         try:
             kind, data = events.get(timeout=0.2)
         except queue.Empty:
             continue
-        if kind == "partial" and data.strip():
+        if kind == "partial" and _txt(data):
             spoke = True
+            partial = _txt(data)
             deadline = max(deadline, time.time() + 3)   # человек говорит, не обрываем
         elif kind in ("result", "final"):
-            if data.strip():
-                heard = data
+            if _txt(data):
+                heard = _txt(data)
                 break
         elif kind == "error":
             log("ошибка распознавания: " + data)
             break
     ear.stop()
     drain()
+    if not heard:
+        heard = partial   # итог не пришёл, берём то, что успел разобрать
     log("услышал: %r" % heard)
 
     if not heard:
+        LAST = "ничего не услышал"
         say("not_understood" if spoke else "timeout")
         return
     name = parse_command(heard)
     if not name:
+        LAST = "услышал «%s» → не понял команду" % heard
         say("not_understood")
         return
     pkg = find_package(name)
     if not pkg:
+        LAST = "услышал «%s» → приложение не найдено" % heard
         say("not_found")
         return
     say("launching")
     if not start_package(pkg):
+        LAST = "услышал «%s» → не удалось открыть %s" % (heard, pkg)
         say("not_found")
     else:
+        LAST = "услышал «%s» → запускаю %s" % (heard, pkg)
         log("запущено: " + pkg)
+
+
+def idle_status():
+    text = "Байт работает. Скажи «Запуск, Байт»"
+    if LAST:
+        text += "\n\nПоследнее: " + LAST
+    return text
 
 
 # ---- модель Vosk: распаковка из model.zip (один раз) ---------------------------
@@ -284,7 +329,7 @@ def run_forever():
 
     say("boot")
     ear.start(WAKE_GRAMMAR)
-    status("Байт работает. Скажи «Запуск, Байт»")
+    status(idle_status())
     last_wake = 0.0
 
     while True:
@@ -298,11 +343,12 @@ def run_forever():
             log("активация: %r" % data)
             ear.stop()
             drain()
+            grammar = command_grammar()
             say("ready")
-            handle_command(ear)
+            handle_command(ear, grammar)
             drain()
             ear.start(WAKE_GRAMMAR)
-            status("Байт работает. Скажи «Запуск, Байт»")
+            status(idle_status())
         elif kind == "error":
             log("ошибка прослушивания: " + data)
             time.sleep(1)
