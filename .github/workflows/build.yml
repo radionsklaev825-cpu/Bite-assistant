@@ -15,10 +15,15 @@ jobs:
         with:
           python-version: "3.11"
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Системные пакеты
         run: |
           sudo apt-get update
-          sudo apt-get install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config \
+          sudo apt-get install -y git zip unzip autoconf libtool pkg-config \
             zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
 
       - name: Скачать русскую модель Vosk
@@ -32,12 +37,24 @@ jobs:
       - name: Buildozer
         shell: bash
         run: |
+          java -version
+          echo "JAVA_HOME=$JAVA_HOME"
           pip install --upgrade buildozer cython virtualenv
           buildozer -v android debug 2>&1 | tee build.log
 
-      - name: Хвост лога при ошибке
+      - name: Причина ошибки
         if: failure()
-        run: tail -n 60 build.log
+        shell: bash
+        run: |
+          N=$(grep -n "gradlew failed" build.log | tail -1 | cut -d: -f1)
+          if [ -n "$N" ]; then sed -n "$((N-60)),$((N))p" build.log | cut -c1-220; fi
+
+      - name: Полный лог файлом
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
 
       - uses: actions/upload-artifact@v4
         with:
