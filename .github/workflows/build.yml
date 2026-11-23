@@ -29,16 +29,12 @@ jobs:
       - name: Скачать русскую модель Vosk
         run: |
           curl -L -o model.zip https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip
-          unzip -q model.zip
-          mv vosk-model-small-ru-0.22 model
-          rm model.zip
-          ls model
+          ls -l model.zip
+          unzip -l model.zip | tail -3
 
       - name: Buildozer
         shell: bash
         run: |
-          java -version
-          echo "JAVA_HOME=$JAVA_HOME"
           pip install --upgrade buildozer cython virtualenv
           buildozer -v android debug 2>&1 | tee build.log
 
