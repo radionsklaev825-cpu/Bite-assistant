@@ -3,8 +3,7 @@ title = Байт
 package.name = byteassistant
 package.domain = org.byteapp
 source.dir = .
-source.include_exts = py,png,mp3
-source.include_patterns = model/*
+source.include_exts = py,png,mp3,zip
 source.exclude_dirs = bin,.buildozer,.github,.git,venv,__pycache__
 version = 0.1
 requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.1,pyjnius,android
