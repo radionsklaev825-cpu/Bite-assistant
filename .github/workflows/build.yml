@@ -30,9 +30,14 @@ jobs:
           ls model
 
       - name: Buildozer
+        shell: bash
         run: |
           pip install --upgrade buildozer cython virtualenv
-          buildozer -v android debug
+          buildozer -v android debug 2>&1 | tee build.log
+
+      - name: Хвост лога при ошибке
+        if: failure()
+        run: tail -n 60 build.log
 
       - uses: actions/upload-artifact@v4
         with:
