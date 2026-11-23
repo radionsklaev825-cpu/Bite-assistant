@@ -3,8 +3,10 @@
 import json
 import os
 import queue
+import shutil
 import time
 import traceback
+import zipfile
 
 from jnius import PythonJavaClass, autoclass, java_method
 
@@ -19,7 +21,7 @@ LABEL_MIN = 0.65                              # порог совпадения 
 # ----------------------------------------------------------------------------
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-MODEL_DIR = os.path.join(BASE, "model")
+MODEL_ZIP = os.path.join(BASE, "model.zip")
 VOICE_DIR = os.path.join(BASE, "voise")
 
 PythonService = autoclass("org.kivy.android.PythonService")
@@ -241,18 +243,43 @@ def handle_command(ear):
         log("запущено: " + pkg)
 
 
+# ---- модель Vosk: распаковка из model.zip (один раз) ---------------------------
+def prepare_model():
+    target = os.path.join(str(service.getFilesDir().getAbsolutePath()), "vosk-model")
+    flag = os.path.join(target, "ready.flag")
+    if os.path.exists(flag):
+        return target
+    if not os.path.exists(MODEL_ZIP):
+        status("Ошибка: нет model.zip (модель не попала в сборку)")
+        raise RuntimeError("model.zip missing: " + MODEL_ZIP)
+    status("Распаковываю модель (один раз, подожди минуту)…")
+    shutil.rmtree(target, ignore_errors=True)
+    count = 0
+    with zipfile.ZipFile(MODEL_ZIP) as z:
+        for info in z.infolist():
+            parts = info.filename.split("/", 1)
+            if len(parts) < 2 or not parts[1] or info.filename.endswith("/"):
+                continue
+            dest = os.path.join(target, parts[1])
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with z.open(info) as src, open(dest, "wb") as out:
+                shutil.copyfileobj(src, out)
+            count += 1
+    with open(flag, "w") as f:
+        f.write("ok")
+    log("модель распакована: файлов %d, папка %s" % (count, target))
+    return target
+
+
 # ---- главный цикл ------------------------------------------------------------------------
 def run_forever():
     pm_power = service.getSystemService(Context.POWER_SERVICE)
     wl = pm_power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Byte::listen")
     wl.acquire()
 
-    if not os.path.isdir(MODEL_DIR):
-        status("Ошибка: нет папки model (модель Vosk не попала в сборку)")
-        raise RuntimeError("model dir missing: " + MODEL_DIR)
-
+    model_path = prepare_model()
     status("Загружаю модель распознавания…")
-    model = Model(MODEL_DIR)
+    model = Model(model_path)
     ear = Ear(model)
 
     say("boot")
