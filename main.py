@@ -78,9 +78,16 @@ class Droid:
 
     def status_text(self):
         try:
-            d = self.act.getExternalFilesDir(None)
-            with open(os.path.join(str(d.getAbsolutePath()), "status.txt"), encoding="utf-8") as f:
-                return f.read().strip()
+            d = str(self.act.getExternalFilesDir(None).getAbsolutePath())
+            with open(os.path.join(d, "status.txt"), encoding="utf-8") as f:
+                text = f.read().strip()
+            if text.startswith("Ошибка"):
+                try:
+                    with open(os.path.join(d, "byte.log"), encoding="utf-8") as f:
+                        text += "\n\n" + f.read()[-450:]
+                except Exception:
+                    pass
+            return text
         except Exception:
             return ""
 
