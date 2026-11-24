@@ -15,7 +15,7 @@ from apps import ALIASES
 from logic import (clean, is_wake, match_alias, match_label, parse_command)
 
 # ---- настройки -------------------------------------------------------------
-WAKE_GRAMMAR = '["запуск байт", "[unk]"]'   # слова-активатор для Vosk
+WAKE_GRAMMAR = '["запуск байт", "байт", "запуск", "[unk]"]'   # + запасные слова против ложных срабатываний
 COMMAND_TIMEOUT = 8.0                         # сек. ждать команду после «Байт на связи»
 SAMPLE_RATE = 16000.0
 ALIAS_MIN = 0.84                              # порог совпадения со списком apps.py
@@ -205,7 +205,7 @@ def start_package(pkg):
 
 
 # ---- грамматика команд: Байт ждёт только «глагол + известное приложение» ---------
-CMD_VERBS = ("запусти", "открой", "включи")
+CMD_VERBS = ("запусти", "открой", "включи", "зайди в", "перейди в", "зайди")
 
 
 def command_grammar():
@@ -337,7 +337,7 @@ def run_forever():
             kind, data = events.get(timeout=30)
         except queue.Empty:
             continue
-        if kind in ("partial", "result", "final") and is_wake(data) \
+        if kind in ("result", "final") and is_wake(data) \
                 and time.time() - last_wake > 2:
             last_wake = time.time()
             log("активация: %r" % data)
