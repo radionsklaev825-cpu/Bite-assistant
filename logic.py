@@ -1,4 +1,4 @@
- # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Логика без Android: разбор фразы и подбор приложения."""
 import re
 from difflib import SequenceMatcher
@@ -90,3 +90,68 @@ def match_label(name, apps):
         if s > best[0]:
             best = (s, pkg, label)
     return best
+
+
+# ---- названия приложений для голосовой грамматики -------------------------------
+_LAT_PAIRS = (("sch", "щ"), ("tch", "ч"), ("sh", "ш"), ("ch", "ч"), ("zh", "ж"),
+              ("th", "т"), ("ph", "ф"), ("ck", "к"), ("kh", "х"), ("ee", "и"),
+              ("oo", "у"), ("ou", "ау"), ("ya", "я"), ("yu", "ю"), ("ts", "ц"),
+              ("qu", "кв"))
+_LAT_ONE = {
+    "a": "а", "b": "б", "c": "к", "d": "д", "e": "е", "f": "ф", "g": "г",
+    "h": "х", "i": "и", "j": "дж", "k": "к", "l": "л", "m": "м", "n": "н",
+    "o": "о", "p": "п", "q": "к", "r": "р", "s": "с", "t": "т", "u": "у",
+    "v": "в", "w": "в", "x": "кс", "y": "и", "z": "з",
+}
+
+
+def _lat_word(w, c_soft=False, y_j=False):
+    out = ""
+    i = 0
+    while i < len(w):
+        for pat, rep in _LAT_PAIRS:
+            if w.startswith(pat, i):
+                out += rep
+                i += len(pat)
+                break
+        else:
+            ch = w[i]
+            if ch == "c" and c_soft:
+                rep = "с"
+            elif ch == "y" and y_j:
+                rep = "й"
+            else:
+                rep = _LAT_ONE.get(ch, "")
+            out += rep
+            i += 1
+    return re.sub(r"(.)\1+", r"\1", out)
+
+
+def spoken_variants(label):
+    """Как название приложения можно произнести по-русски.
+    Русские названия берём как есть, английские переводим в русские буквы."""
+    t = clean(label)
+    if not t:
+        return []
+    if re.fullmatch(r"[а-я ]+", t):
+        return [t] if len(t) >= 3 else []
+    if re.fullmatch(r"[a-z ]+", t):
+        words = t.split()
+        res = {" ".join(_lat_word(w) for w in words)}
+        if len(words) == 1:
+            res.add(_lat_word(words[0], c_soft=True))
+            res.add(_lat_word(words[0], y_j=True))
+            res.add(_lat_word(words[0], c_soft=True, y_j=True))
+        return [r for r in res if len(r) >= 3]
+    return []
+
+
+def spoken_names(labels, aliases, vocab=None):
+    """Все названия, которые Байт будет ждать в команде. Если известен словарь
+    модели (vocab), оставляем только слова, которые она умеет распознавать."""
+    names = set(aliases)
+    for lab in labels:
+        names.update(spoken_variants(lab))
+    if vocab:
+        names = {n for n in names if all(w in vocab for w in n.split())}
+    return sorted(names)
