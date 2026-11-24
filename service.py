@@ -12,7 +12,7 @@ import zipfile
 from jnius import PythonJavaClass, autoclass, java_method
 
 from apps import ALIASES
-from logic import (clean, is_wake, match_alias, match_label, parse_command)
+from logic import (is_wake, match_alias, match_label, parse_command, spoken_names)
 
 # ---- настройки -------------------------------------------------------------
 WAKE_GRAMMAR = '["запуск байт", "байт", "запуск", "[unk]"]'   # + запасные слова против ложных срабатываний
@@ -38,6 +38,8 @@ SpeechService = autoclass("org.vosk.android.SpeechService")
 
 events = queue.Queue()
 LAST = ""   # что Байт услышал в последний раз (показываем на экране)
+KNOWN = 0   # сколько названий приложений он умеет понимать
+_VOCAB = None
 
 
 # ---- журнал и статус (файлы видны в памяти телефона) -------------------------
@@ -205,24 +207,44 @@ def start_package(pkg):
 
 
 # ---- грамматика команд: Байт ждёт только «глагол + известное приложение» ---------
-CMD_VERBS = ("запусти", "открой", "включи", "зайди в", "перейди в", "зайди")
+CMD_VERBS = ("запусти", "открой", "включи", "зайди в", "перейди в")
+
+
+def vocab():
+    """Слова, которые знает модель (graph/words.txt). Незнакомые слова ей не распознать."""
+    global _VOCAB
+    if _VOCAB is None:
+        _VOCAB = set()
+        try:
+            p = os.path.join(str(service.getFilesDir().getAbsolutePath()),
+                             "vosk-model", "graph", "words.txt")
+            with open(p, encoding="utf-8") as f:
+                for line in f:
+                    parts = line.split()
+                    if parts:
+                        _VOCAB.add(parts[0])
+        except Exception:
+            log("words.txt: " + traceback.format_exc())
+        log("слов в словаре модели: %d" % len(_VOCAB))
+    return _VOCAB
 
 
 def command_grammar():
-    names = set(ALIASES.keys())
+    global KNOWN
+    labels = []
     try:
-        for label, _pkg in installed_apps(service.getPackageManager()):
-            l = clean(label)
-            if len(l) >= 3 and re.fullmatch(r"[а-я ]+", l):
-                names.add(l)
+        labels = [lab for lab, _pkg in installed_apps(service.getPackageManager())]
     except Exception:
         log("command_grammar: " + traceback.format_exc())
+    names = spoken_names(labels, ALIASES.keys(), vocab())
+    KNOWN = len(names)
     phrases = []
-    for n in sorted(names):
+    for n in names:
         phrases.append(n)
         for v in CMD_VERBS:
             phrases.append(v + " " + n)
     phrases.append("[unk]")
+    log("грамматика: названий %d, фраз %d" % (KNOWN, len(phrases)))
     return json.dumps(phrases, ensure_ascii=False)
 
 
@@ -283,6 +305,8 @@ def handle_command(ear, grammar):
 
 def idle_status():
     text = "Байт работает. Скажи «Запуск, Байт»"
+    if KNOWN:
+        text += "\nПонимаю названий приложений: %d" % KNOWN
     if LAST:
         text += "\n\nПоследнее: " + LAST
     return text
@@ -326,6 +350,7 @@ def run_forever():
     status("Загружаю модель распознавания…")
     model = Model(model_path)
     ear = Ear(model)
+    command_grammar()   # заранее считаем, какие приложения понимаем
 
     say("boot")
     ear.start(WAKE_GRAMMAR)
